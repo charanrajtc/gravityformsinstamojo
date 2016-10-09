@@ -210,7 +210,7 @@ class GFInstamojo extends GFPaymentAddOn {
 			return false;
 		}
 
-		$paymentId='MOJO6920005J13404519';
+		// $paymentId='MOJO6920005J13404519';
 		$url=$this->_instamojo_api_url.$paymentRequestId.'/'.$paymentId.'/';
 		
 		$gf_instance_insamojo=gf_instamojo();
