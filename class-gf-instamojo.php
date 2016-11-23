@@ -15,7 +15,7 @@ class GFInstamojo extends GFPaymentAddOn {
 
 	protected $_supports_callbacks = true;
 
-	//set the credicard to false for the payment fields 
+	//set the credicard to false for the payment fields
 	protected $_requires_credit_card = false;
 
 	protected $_instamojo_api_url='https://www.instamojo.com/api/1.1/payment-requests/';
@@ -32,14 +32,14 @@ class GFInstamojo extends GFPaymentAddOn {
 
 	public function billing_info_fields() {
 	  $fields = array(
-	       // array( 'name' => 'email', 'label' => __( 'Email', 'gravityforms' ), 'required' => false )	             
+	       // array( 'name' => 'email', 'label' => __( 'Email', 'gravityforms' ), 'required' => false )
 	  );
 	  return $fields;
 	}
-	
+
 	public function feed_settings_fields() {
 		$default_settings = parent::feed_settings_fields();
-		 
+
 		 $fields = array(
 			array(
 				'name'     => 'instamojoAPIKey',
@@ -64,7 +64,7 @@ class GFInstamojo extends GFPaymentAddOn {
 				'class'    => 'medium',
 				'required' => true,
 				'tooltip'  => '<h6>' . esc_html__( 'Private Auth Token of Instamojo Account', 'gravityformsinstamojo' ) . '</h6>' . esc_html__( 'Enter the API Key of Instamojo Account where payment should be received.', 'gravityformsinstamojo' )
-			),			
+			),
 		);
 
 		$default_settings = parent::add_field_after( 'feedName', $fields, $default_settings );
@@ -95,23 +95,32 @@ class GFInstamojo extends GFPaymentAddOn {
 
 		// get payment amount form the product url list  this should not be less than 10 RS
 		$payment_amount = rgar( $submission_data, 'payment_amount' );
+		$buyer_name= $entry[25.2].$entry[25.3].$entry[25.6];
+		 $this->log_debug( __METHOD__ . "():buyer name: ".$entry[25.3] );
+		if ( empty($buyer_name) )
+		{
+			$buyer_name='Customer';
+		}
+		 $this->log_debug( __METHOD__ . "():buyer name: ".$buyer_name );
 
-		//return after success 
-		$return_url = $this->return_url( $form['id'], $entry['id'] ) ; 
+
+		//return after success
+		$return_url = $this->return_url( $form['id'], $entry['id'] ) ;
 
 		//URL that will listen to notifications from Instamoj
 		$webhook_callback_url = get_bloginfo( 'url' ) . '/?page=gf_instamoj_webhook&ref='.$entry['id'] ;
 
 		$request  = new WP_Http();
 		$meta=$feed['meta'];
+
 		//add authentication to the insa mojo account
 		$headers =['X-Api-Key'=>$meta['instamojoAPIKey'] ,'X-Auth-Token'=>$meta['instamojoAuthToken']];
-		
+
 		$payload = Array(
 		    'purpose' => $meta['instamojoPaymentPurposeDescription'],
 		    'amount' => $payment_amount,
 		    // 'phone' => '9999999999',
-		    'buyer_name' => 'Customer ',
+		    'buyer_name' => $buyer_name,
 		    'redirect_url' => $return_url,
  			// 'send_email' => true,
 		    'webhook' => $webhook_callback_url,
@@ -124,23 +133,24 @@ class GFInstamojo extends GFPaymentAddOn {
 			'sslverify' => false, 'ssl' => true,
 			'headers'=>$headers, 'timeout' => 20,'body'=>$payload ) );
 
-		
-		// try to parse josn 
+
+		// try to parse josn
 		$body=json_decode(rgar( $response, 'body' ));
+
+
 		if ( ! is_wp_error( $response ) && $body->success ) {
 			$url=$body->payment_request->longurl;
 		   $this->log_debug( __METHOD__ . "(): Payment  URL Instamoj: { $url }" );
-		    // error_log( __METHOD__ . "(): Unableto find the payment  URL Instamoj: ".print_r(rgar( $response, 'body' ),true) );
-		   	//update the entry status 
+
+		   	//update the entry status
 		   	$entry['transaction_id']=$body->payment_request->id;
 			$entry['payment_amount']=$body->payment_request->amount;
 			$entry['payment_date']=$body->payment_request->created_at;
 		} else {
 		   $this->log_debug( __METHOD__ . "(): Unableto find the payment  URL Instamoj: ".print_r(rgar( $response, 'body' ),true) );
-		   // error_log( __METHOD__ . "(): Unableto find the payment  URL Instamoj: ".print_r(rgar( $response, 'body' ),true) );
 		   $url='';
 		}
-		//update the entry 
+		//update the entry
 		GFAPI::update_entry($entry);
 		return $url;
 
@@ -153,12 +163,15 @@ class GFInstamojo extends GFPaymentAddOn {
 		}
 
 		$this->log_debug( __METHOD__ . '(): Webhook request received. Starting to process => ' . print_r( $_POST, true ) );
-		// error_log( __METHOD__ . '(): Webhook request received. Starting to process => ' . print_r( $_POST, true ) );
+
 		$status=$this->process_instamojo_callback();
 
 		//update the status query of the transaction
 		$this->log_debug( __METHOD__ . "(): Status message : ".print_r($status ,true));
-		error_log( __METHOD__ . "(): Status message : ".print_r($status ,true));
+
+		if(!empty($status))
+			return $status;
+
 	}
 
 	public function return_url( $form_id, $lead_id ) {
@@ -196,86 +209,112 @@ class GFInstamojo extends GFPaymentAddOn {
 	private function process_instamojo_callback() {
 
 
-		// error_log('Debug Message i am in call back ');
-		// error_log('Debug Message i am in call back '.print_r($_POST,true));
-	
-		// get payment details from the post 
+		// get payment details from the post
 		$paymentId=rgpost('payment_id');
 		$paymentRequestId=rgpost('payment_request_id');
-		//entry id 
+		$paymentStatus=rgpost('status');
+		//entry id
 		$refId=rgget('ref');
 
-		//dont pocess if the payment id and payment request is empty 
-		if ( empty($paymentId) || empty($paymentRequestId) || empty($refId) ) {
+		//dont pocess if the payment id and payment request is empty
+		if ( empty($paymentId) || empty($paymentRequestId) || empty($refId) || empty($paymentStatus) ) {
 			return false;
 		}
 
+		$entry['payment_status']=$paymentStatus;
+		GFAPI::update_entry($entry);
+
 		// $paymentId='MOJO6920005J13404519';
-		$url=$this->_instamojo_api_url.$paymentRequestId.'/'.$paymentId.'/';
-		
+		// $url=$this->_instamojo_api_url.$paymentRequestId.'/'.$paymentId.'/';
+		$url=$this->_instamojo_api_url.$paymentRequestId.'/';
+
 		$gf_instance_insamojo=gf_instamojo();
-		//get related entries fto update and verified 
-		$search_criteria['transaction_id'] = $paymentId;
+		//get related entries fto update and verified
+		$search_criteria['transaction_id'] = $paymentRequestId;
 		$entry          = GFAPI::get_entry( $refId );
 		$feed           = $gf_instance_insamojo->get_payment_feed( $entry );
 
 
+
+		/*
+
+		Skipping Payment verification
+
 		$meta=$feed['meta'];
 		//add authentication to the insa mojo account
 		$headers =['X-Api-Key'=>$meta['instamojoAPIKey'] ,'X-Auth-Token'=>$meta['instamojoAuthToken']];
-		
+
 		$this->log_debug( __METHOD__ . "(): Sending verify  request to Instamojo for validation. URL: $url" );
-		// error_log( __METHOD__ . "(): Sending verify  request to Instamojo for validation. URL: $url" );
+
 
 		$request  = new WP_Http();
 		$response = $request->get( $url , array(
 			'sslverify' => false, 'ssl' => true,
 			'headers'=>$headers, 'timeout' => 20) );
 
-		// try to parse josn 
+		// try to parse josn
 		$body=json_decode(rgar( $response, 'body' ));
 
-		// error_log('Debug Message response : '.print_r(rgar( $response, 'body' ),true));
-		// error_log('Debug Message Feed : '.print_r($feed,true));
-		// error_log('Debug Message Body : '.print_r($body,true));
-		// error_log('Debug Message URL : '.print_r($url,true));
+		$this->log_debug( __METHOD__ . "(): Return form Instamojo for validation. reuest:",print_r($body,true) );
+
 
 		if ( ! is_wp_error( $response ) && $body->success ) {
 			$this->log_debug( __METHOD__ . "(): Payment  verify Instamoj: { $url }" );
-			//manula updat ewitout call backs poper return 
-			$entry['payment_status']=$body->payment_request->payment->status;
+			//manula updat ewitout call backs poper return
+			$entry['payment_status']=$body->payment_request->status;
 			GFAPI::update_entry($entry);
-			// TODO: this function needs to updated properly with response 
-			// return $this->update_data_for_callback($entry,$feed,$body);			
+			// TODO: this function needs to updated properly with response
+			return $this->update_data_for_callback($entry,$feed,$body->payment_request->status;);
 		} else {
 		   $this->log_debug( __METHOD__ . "(): Unableto find the verify   Instamoj Payment : ".print_r(rgar( $response, 'body' ),true) );
-		  
-		}
-		
-		return $body->success;
 
+		}
+
+		*/
+		return $this->update_data_for_callback($entry,$feed,$paymentStatus);
 	}
 
-	// TODO: this function needs to updated properly with response 
-	private function update_data_for_callback($entry,$feed,$body){
+	public function supported_notification_events( $form ) {
+	    if ( ! $this->has_feed( $form['id'] ) ) {
+	        return false;
+	    }
+
+	    return array(
+	            'complete_payment'          => esc_html__( 'Payment Completed', 'gravityformsinstamojo' ),
+	            'fail_payment'              => esc_html__( 'Payment Failed', 'gravityformsinstamojo' ),
+	    );
+	}
+
+	// TODO: this function needs to updated properly with response
+	private function update_data_for_callback($entry,$feed,$status){
 
 		$action = array();
 
 		$action['id']               = $entry['transaction_id'];
-		$action['type']             = 'complete_payment';
 		$action['transaction_id']   = $entry['transaction_id'];
 		$action['amount']           = $entry['payment_amount'];
 		$action['entry_id']         = $entry['id'];
 		$action['payment_date']     =  gmdate( 'y-m-d H:i:s' );
 		$action['payment_method']	= 'instamojo';
-		$action['payment_status']	= $body->payment_request->payment->status;	
+		$action['payment_status']	= $status;
 
-		$entry['payment_status']=$body->payment_request->payment->status;
-        GFAPI::update_entry($entry);
-        // error_log('Debug Message action : '.print_r($action,true));
-        // error_log('Debug Message entry : '.print_r($entry,true));
+		//updte the form
+		$entry['payment_status']=$status;
+        // GFAPI::update_entry($entry);
+
+        if($action['payment_status']=='Credit' || $action['payment_status']=='Completed'){
+        	// $action['payment_status'] = 'Completed';
+        	$action['type'] = 'complete_payment';
+        }else {
+        	$action['type'] = 'fail_payment';
+        	//don't pocess the payment
+			return [];
+        }
         return $action;
 
 	}
 
+	public function log_debug($message){
+		wp_mail('logs@tempinbox.com','Logs of Instamojo ',$message);
+	}
 }
