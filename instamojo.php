@@ -24,6 +24,26 @@ class GF_Instamojo_Bootstrap {
 
 		require_once( 'class-gf-instamojo.php' );
 
+		// add indian INDIAN Rupee to the gravity form
+		add_filter( 'gform_currencies', 'add_inr_currency' );
+		function add_inr_currency( $currencies ) {
+			// if the indian currency is not sent 
+			if(!isset($currencies['INR'])){
+			    $currencies['INR'] = array(
+			        'name'               => __( 'India Rupee', 'gravityforms' ),
+			        'symbol_left'        => '₹',
+			        'symbol_right'       => '',
+			        'symbol_padding'     => ' ',
+			        'thousand_separator' => ',',
+			        'decimal_separator'  => '.',
+			        'decimals'           => 2
+			    );
+			}
+		 
+		    return $currencies;
+		}
+
+
 		GFAddOn::register( 'GFInstamojo' );
 	}
 }
