@@ -25,8 +25,8 @@ class GF_Instamojo_Bootstrap {
 		require_once( 'class-gf-instamojo.php' );
 
 		// add indian INDIAN Rupee to the gravity form
-		add_filter( 'gform_currencies', 'add_inr_currency' );
-		function add_inr_currency( $currencies ) {
+		add_filter( 'gform_currencies', 'add_inr_currency_instamojo' );
+		function add_inr_currency_instamojo( $currencies ) {
 			// if the indian currency is not sent 
 			if(!isset($currencies['INR'])){
 			    $currencies['INR'] = array(

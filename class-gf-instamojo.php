@@ -13,7 +13,7 @@ class GFInstamojo extends GFPaymentAddOn {
 	protected $_title = 'Gravity Forms Instamojo Standard Add-On';
 	protected $_short_title = 'Instamojo';
 
-	protected $_supports_callbacks = true;
+	protected $_supports_callbacks = false;
 
 	//set the credicard to false for the payment fields
 	protected $_requires_credit_card = false;
@@ -22,8 +22,10 @@ class GFInstamojo extends GFPaymentAddOn {
 	protected $_instamojo_sandbox_api_url = 'https://test.instamojo.com/api/1.1/payment-requests/';
 
 	private static $_instance = null;
+
 	const PAYMENT_MODE_TEST = 'test';
 	const PAYMENT_MODE_PROD = 'production';
+	const PAYMENT_METHOD = 'Instamojo';
 
 	public static function get_instance() {
 		if (self::$_instance == null) {
@@ -35,7 +37,7 @@ class GFInstamojo extends GFPaymentAddOn {
 
 	public function billing_info_fields() {
 		$fields = array(
-			array('name' => 'name', 'label' => __('Name', 'gravityforms'), 'required' => true),
+			array('name' => 'name', 'label' => __('Name', 'gravityforms'), 'required' => false),
 			array('name' => 'email', 'label' => __('Email', 'gravityforms'), 'required' => false),
 			array('name' => 'phone', 'label' => __('Phone', 'gravityforms'), 'required' => false),
 		);
@@ -46,7 +48,6 @@ class GFInstamojo extends GFPaymentAddOn {
 	public function other_settings_fields() {
 		$default_settings = parent::other_settings_fields();
 
-		$this->log_debug(__METHOD__ . "(): debug " . print_r($default_settings, true));
 		$sample_choice_option = array_search('options', array_column($default_settings, 'name'));
 
 		if (!empty($sample_choice_option)) {
@@ -71,40 +72,40 @@ class GFInstamojo extends GFPaymentAddOn {
 		$fields = array(
 			array(
 				'name' => 'instamojoAPIKey',
-				'label' => esc_html__('Private API Key ', 'gravityformsinstamojo'),
+				'label' => esc_html__('Private API Key ', $this->_slug),
 				'type' => 'text',
 				'class' => 'medium',
 				'required' => true,
-				'tooltip' => '<h6>' . esc_html__('Private API Key of Instamojo Account', 'gravityformsinstamojo') . '</h6>' . esc_html__('Enter the API Key of Instamojo Account where payment should be received.', 'gravityformsinstamojo'),
+				'tooltip' => '<h6>' . esc_html__('Private API Key of Instamojo Account', $this->_slug) . '</h6>' . esc_html__('Enter the API Key of Instamojo Account where payment should be received.', $this->_slug),
 			),
 			array(
 				'name' => 'instamojoPaymentPurposeDescription',
-				'label' => esc_html__('Payment Purpose ', 'gravityformsinstamojo'),
+				'label' => esc_html__('Payment Purpose ', $this->_slug),
 				'type' => 'text',
 				'class' => 'medium',
 				'required' => true,
-				'tooltip' => '<h6>' . esc_html__('Payment Purpose Description Instamojo Account', 'gravityformsinstamojo') . '</h6>' . esc_html__('Payment Purpose Description Instamojo where it is reflected in payment form.', 'gravityformsinstamojo'),
+				'tooltip' => '<h6>' . esc_html__('Payment Purpose Description Instamojo Account', $this->_slug) . '</h6>' . esc_html__('Payment Purpose Description Instamojo where it is reflected in payment form.', $this->_slug),
 			),
 			array(
 				'name' => 'instamojoAuthToken',
-				'label' => esc_html__('Private Auth Token ', 'gravityformsinstamojo'),
+				'label' => esc_html__('Private Auth Token ', $this->_slug),
 				'type' => 'text',
 				'class' => 'medium',
 				'required' => true,
-				'tooltip' => '<h6>' . esc_html__('Private Auth Token of Instamojo Account', 'gravityformsinstamojo') . '</h6>' . esc_html__('Enter the API Key of Instamojo Account where payment should be received.', 'gravityformsinstamojo'),
+				'tooltip' => '<h6>' . esc_html__('Private Auth Token of Instamojo Account', $this->_slug) . '</h6>' . esc_html__('Enter the API Key of Instamojo Account where payment should be received.', $this->_slug),
 			),
 			array(
 				'name' => 'mode',
-				'label' => __('Mode', 'gravityformsinstamojo'),
+				'label' => __('Mode', $this->_slug),
 				'type' => 'radio',
 				'choices' => array(
-					array('id' => 'gf_instamoj_mode_production', 'label' => __('Production', 'gravityformsinstamojo'), 'value' => self::PAYMENT_MODE_PROD),
-					array('id' => 'gf_instamoj_mode_test', 'label' => __('Test', 'gravityformsinstamojo'), 'value' => self::PAYMENT_MODE_TEST),
+					array('id' => 'gf_instamoj_mode_production', 'label' => __('Production', $this->_slug), 'value' => self::PAYMENT_MODE_PROD),
+					array('id' => 'gf_instamoj_mode_test', 'label' => __('Test', $this->_slug), 'value' => self::PAYMENT_MODE_TEST),
 
 				),
 				'horizontal' => true,
 				'default_value' => 'production',
-				'tooltip' => '<h6>' . __('Mode', 'gravityformsinstamojo') . '</h6>' . __('Select Production to receive live payments. Select Test for testing purposes when using the Instamojo development sandbox.', 'gravityformsinstamojo'),
+				'tooltip' => '<h6>' . __('Mode', $this->_slug) . '</h6>' . __('Select Production to receive live payments. Select Test for testing purposes when using the Instamojo development sandbox.', $this->_slug),
 			),
 		);
 
@@ -133,16 +134,14 @@ class GFInstamojo extends GFPaymentAddOn {
 		return true;
 	}
 
-	public function redirect_url($feed, $submission_data, $form, $entry) {
-
-		//Don't process redirect url if request is a Instamoj return
-		if (!rgempty('gf_instamojo_return', $_GET)) {
+	protected function is_return_callback_valid() {
+		if (rgget('callback') != $this->_slug) {
 			return false;
 		}
+		return true;
+	}
 
-		//updating lead's payment_status to Processing
-		$entry['payment_status'] = 'Processing';
-		$entry['payment_method'] = 'instamojo';
+	public function redirect_url($feed, $submission_data, $form, $entry) {
 
 		// get payment amount form the product url list  this should not be less than 10 RS
 		$payment_amount = rgar($submission_data, 'payment_amount');
@@ -154,51 +153,202 @@ class GFInstamojo extends GFPaymentAddOn {
 		//URL that will listen to notifications from Instamoj
 		$webhook_callback_url = get_bloginfo('url') . '/?page=gf_instamoj_webhook&ref=' . $entry['id'];
 
-		$request = new WP_Http();
-
-		//add authentication to the insa mojo account
-		$headers = ['X-Api-Key' => $meta['instamojoAPIKey'], 'X-Auth-Token' => $meta['instamojoAuthToken']];
-
-
-		// pay load for the Instamojo options 
+		// pay load for the Instamojo options
 		$payload = Array(
 			'purpose' => $meta['instamojoPaymentPurposeDescription'],
 			'amount' => $payment_amount,
-			// 'phone' => '9999999999',
-			// 'buyer_name' => 'Customer',
 			'redirect_url' => $return_url,
-			// 'send_email' => true,
 			'webhook' => $webhook_callback_url,
-			// 'send_sms' => true,
-			// 'email' => $meta['billingInformation_email'],
 			'allow_repeated_payments' => false,
 		);
 
+		// add options from settings form
+		$payload['send_email'] = (boolean) rgar($meta, 'send_email');
+		$payload['send_sms'] = (boolean) rgar($meta, 'send_sms');
+
 		// add customer name if not set
 		$buyer_name = rgar($submission_data, 'name');
-		$this->log_debug(__METHOD__ . "(): Buyer name " . $buyer_name);
 
 		if (!empty($buyer_name)) {
 			$payload['buyer_name'] = $buyer_name;
 		}
 
 		$buyer_email = rgar($submission_data, 'email');
-		$this->log_debug(__METHOD__ . "(): Buyer name " . $buyer_email);
 		if (!empty($buyer_email)) {
 			$payload['email'] = $buyer_email;
 		}
 
 		$buyer_phone = rgar($submission_data, 'phone');
-		$this->log_debug(__METHOD__ . "(): Buyer name " . $buyer_phone);
 		if (!empty($buyer_phone)) {
 			$payload['phone'] = $buyer_phone;
 		}
 
-		$payload['send_email'] = (boolean) rgar($meta, 'send_email');
-		$payload['send_sms'] = (boolean) rgar($meta, 'send_sms');
+		$this->log_debug(__METHOD__ . "(): Name | Email | Phone : " . $buyer_name . ' | ' . $buyer_email . ' | ' . $buyer_phone);
+
+		$payment_request_response = $this->create_instamojo_paymentrequest(
+			$payload,
+			$meta['mode'],
+			$meta['instamojoAPIKey'],
+			$meta['instamojoAuthToken']
+		);
+
+		$amount_formatted = GFCommon::to_money($payment_amount, $entry['currency']);
+
+		// reset the payment URL to null
+		$url = '';
+		if (!is_wp_error($payment_request_response)) {
+			$url = rgar($payment_request_response, 'redirect_url');
+			$request_id = rgar($payment_request_response, 'request_id');
+			$action['note'] = sprintf(esc_html__('Payment is pending. Amount: %s. Request Id : %s.  Request URL : %s.', $this->_slug), $amount_formatted, $request_id, $url);
+			// record a pending payment
+			$this->add_pending_payment($entry, $action);
+			$this->log_debug(__METHOD__ . '(): Added Pending payment record');
+
+		} else {
+
+			// fail the payment as not able to redirect to the user
+			$action['note'] = sprintf(esc_html__('Payment has failed. Amount: %s Reason: %s', $this->_slug), $amount_formatted, $payment_request_response->get_error_message());
+			$action['payment_status'] = 'Failed';
+			// record a pending payment
+			$this->fail_payment($entry, $action);
+			return false;
+		}
+
+		return gf_apply_filters('gform_instamojo_request', $form['id'], $url, $form, $entry, $feed, $submission_data);
+	}
+
+	private function unpack_data($data) {
+
+		// FIXME: move this code block to unpack_data function and optimize
+		$results = [];
+		if (!empty($data)) {
+			$data = base64_decode($data);
+			$data = explode('&', $data);
+			$cal_hash = wp_hash($data[0]);
+			$hash = str_replace('hash=', '', $data[1]);
+
+			if ($hash != $cal_hash) {
+				$this->log_debug(__METHOD__ . '(): Tampered hash ');
+			} else {
+				$data = explode('|', str_replace('ids=', '', $data[0]));
+				$results = array('form_id' => $data[0], 'lead_id' => $data[1]);
+				$this->log_debug(__METHOD__ . '():  callback hash verified');
+			}
+		} else {
+			$this->log_debug(__METHOD__ . '(): unable to unpack ');
+		}
+		return $results;
+	}
+
+	protected function verify_instamojo_payment($payment_id, $payment_request_id, $mode, $instamojo_api_key, $instamojo_auth_token) {
+		$request = new WP_Http();
+
+		//add authentication to the insa mojo account
+		$headers = ['X-Api-Key' => $instamojo_api_key, 'X-Auth-Token' => $instamojo_auth_token];
 
 		$base_api_url = $this->_instamojo_sandbox_api_url;
-		if (!empty($meta) && $meta['mode'] == self::PAYMENT_MODE_PROD) {
+		if (!empty($meta) && $mode == self::PAYMENT_MODE_PROD) {
+			$base_api_url = $this->_instamojo_api_url;
+		}
+		$url = $base_api_url . $payment_request_id . '/';
+
+		$this->log_debug(__METHOD__ . "(): Sending verify  request to Instamojo for validation. URL: $url");
+
+		$request = new WP_Http();
+		$response = $request->get($url, array(
+			'sslverify' => false, 'ssl' => true,
+			'headers' => $headers, 'timeout' => 20));
+
+		// try to parse josn
+		$body = json_decode(rgar($response, 'body'));
+
+		if (!is_wp_error($response) && $body->success) {
+			$this->log_debug(__METHOD__ . "(): Payment status : " . $body->payment_request->status);
+			return $body->payment_request;
+		} else {
+			$this->log_debug(__METHOD__ . "(): Unableto find the verify Payment");
+			return new WP_Error('broke', __("Unable to create the payment Instamoj URL ", $this->_slug));
+		}
+
+		// return empty array
+		return [];
+	}
+
+	public function maybe_process_return_callback() {
+		// Ignoring requests that are not this addon's callbacks.
+		if (!$this->is_return_callback_valid()) {
+			return;
+		}
+
+		$this->log_debug(__METHOD__ . '(): Processing retrun callback option');
+
+		$gf_instamojo_return = $this->unpack_data(rgget('gf_instamojo_return'));
+		$payment_id = rgget('payment_id');
+		$payment_request_id = rgget('payment_request_id');
+
+		// invalid parameters passed
+		if (empty($gf_instamojo_return) || empty($payment_id) || empty($payment_request_id)) {
+			return;
+		}
+		// get the form entry and payment details
+		$entry = GFAPI::get_entry($gf_instamojo_return['lead_id']);
+		$feed = $this->get_payment_feed($entry);
+		$meta = rgar($feed, 'meta');
+		$payment_request_details = $this->verify_instamojo_payment(
+			$payment_id, $payment_request_id,
+			$meta['mode'],
+			$meta['instamojoAPIKey'],
+			$meta['instamojoAuthToken']
+		);
+
+		if (!is_wp_error($payment_request_details) || !empty($payment_request_details)) {
+			// fin the payment details in the request
+			$payment_details = '';
+			foreach ($payment_request_details->payments as $key => $value) {
+				if ($value->payment_id == $payment_id) {
+					$payment_details = $value;
+				}
+			}
+
+			// switch only if the payment is completed
+			switch ($payment_request_details->status) {
+			case 'Completed':
+				$action = [
+					'type' => $payment_request_details->status,
+				];
+				$this->log_debug(__METHOD__ . '(): Debug ' . print_r($payment_details, true));
+				break;
+			default:
+				# code...
+				break;
+			}
+		}
+
+		return;
+	}
+
+	// pre init constructors
+	public function pre_init() {
+		parent::pre_init();
+
+		// Intercepting callback retruns.
+		add_action('parse_request', array($this, 'maybe_process_return_callback'));
+
+	}
+
+	protected function create_instamojo_paymentrequest($payload, $mode, $instamojo_api_key, $instamojo_auth_token) {
+
+		$request = new WP_Http();
+
+		//add authentication to the insa mojo account
+		$headers = ['X-Api-Key' => $instamojo_api_key, 'X-Auth-Token' => $instamojo_auth_token];
+
+		$sucess_results = array(
+			'redirect_url' => '',
+		);
+
+		$base_api_url = $this->_instamojo_sandbox_api_url;
+		if (!empty($meta) && $mode == self::PAYMENT_MODE_PROD) {
 			$base_api_url = $this->_instamojo_api_url;
 		}
 
@@ -210,56 +360,16 @@ class GFInstamojo extends GFPaymentAddOn {
 		$body = json_decode(rgar($response, 'body'));
 
 		if (!is_wp_error($response) && $body->success) {
-			$url = $body->payment_request->longurl;
-			$this->log_debug(__METHOD__ . "(): Payment  URL Instamoj: { $url }");
-
-			//update the entry status
-			$entry['transaction_id'] = $body->payment_request->id;
-			$entry['payment_amount'] = $body->payment_request->amount;
-			$entry['payment_date'] = $body->payment_request->created_at;
+			$sucess_results['request_id'] = $body->payment_request->id;
+			$sucess_results['payment_amount'] = $body->payment_request->amount;
+			$sucess_results['payment_date'] = $body->payment_request->created_at;
+			$sucess_results['redirect_url'] = $body->payment_request->longurl;
+			$this->log_debug(__METHOD__ . "(): Payment  URL Instamoj: " . $body->payment_request->longurl);
 		} else {
-			$this->log_debug(__METHOD__ . "(): Unableto find the payment  URL Instamoj: " . print_r(rgar($response, 'body'), true));
-			$url = '';
-			$entry['payment_status'] = 'Failed';
+			$this->log_debug(__METHOD__ . "(): Unable to create the payment Instamoj URL : ");
+			return new WP_Error('broke', __("Unable to create the payment Instamoj URL ", $this->_slug));
 		}
-
-		// update the entry
-		GFAPI::update_entry($entry);
-		return $url;
-
-	}
-
-	//  Use this for capturing the Payment information
-	// protected function authorize( $feed, $submission_data, $form, $entry ) {
-	// 	return array (
-	// 			'is_authorized' => false,
-	// 			'is_success' => false,
-	// 			'error_message' => 'just kidding'.
-	// 			// 'transaction_id' => 12345,
-	// 			array $captured_payment { If payment is captured, an additional array is created.
-	// 			string $error_message The error message, if any.
-	// 			string $transaction_id The transaction ID of the captured payment.
-	// 			int $amount The amount of the captured payment, if successful. } }
-	// 			}
-	// }
-
-	public function callback() {
-
-		if (!$this->is_gravityforms_supported()) {
-			return false;
-		}
-
-		$this->log_debug(__METHOD__ . '(): Webhook request received. Starting to process => ' . print_r($_POST, true));
-
-		$status = $this->process_instamojo_callback();
-
-		//update the status query of the transaction
-		$this->log_debug(__METHOD__ . "(): Status message : " . print_r($status, true));
-
-		if (!empty($status)) {
-			return $status;
-		}
-
+		return $sucess_results;
 	}
 
 	public function return_url($form_id, $lead_id) {
@@ -273,12 +383,15 @@ class GFInstamojo extends GFPaymentAddOn {
 			$pageURL .= $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI'];
 		}
 
+		// FIXME: move this code block to pack_data function
 		$ids_query = "ids={$form_id}|{$lead_id}";
 		$ids_query .= '&hash=' . wp_hash($ids_query);
 
-		$url = add_query_arg('gf_instamojo_return', base64_encode($ids_query), $pageURL);
+		$url = add_query_arg(array(
+			'gf_instamojo_return' => base64_encode($ids_query),
+		), $pageURL);
 
-		$query = 'gf_instamojo_return=' . base64_encode($ids_query);
+		$query = 'gf_instamojo_return=' . base64_encode($ids_query) . '&callback=' . $this->_slug;
 		/**
 		 * Filters Instamoj's return URL, which is the URL that users will be sent to after completing the payment on Instamoj's site.
 		 * Useful when URL isn't created correctly (could happen on some server configurations using PROXY servers).
@@ -294,106 +407,4 @@ class GFInstamojo extends GFPaymentAddOn {
 
 	}
 
-	private function process_instamojo_callback() {
-
-		// get payment details from the post
-		$paymentId = rgpost('payment_id');
-		$paymentRequestId = rgpost('payment_request_id');
-		$paymentStatus = rgpost('status');
-		//entry id
-		$refId = rgget('ref');
-
-		//dont pocess if the payment id and payment request is empty
-		if (empty($paymentId) || empty($paymentRequestId) || empty($refId) || empty($paymentStatus)) {
-			return false;
-		}
-
-		$entry['payment_status'] = $paymentStatus;
-		GFAPI::update_entry($entry);
-
-		// $paymentId='MOJO6920005J13404519';
-		// $url=$this->_instamojo_api_url.$paymentRequestId.'/'.$paymentId.'/';
-		$url = $this->_instamojo_api_url . $paymentRequestId . '/';
-
-		$gf_instance_insamojo = gf_instamojo();
-		//get related entries fto update and verified
-		$search_criteria['transaction_id'] = $paymentRequestId;
-		$entry = GFAPI::get_entry($refId);
-		$feed = $gf_instance_insamojo->get_payment_feed($entry);
-
-		/*
-
-			Skipping Payment verification
-
-			$meta=$feed['meta'];
-			//add authentication to the insa mojo account
-			$headers =['X-Api-Key'=>$meta['instamojoAPIKey'] ,'X-Auth-Token'=>$meta['instamojoAuthToken']];
-
-			$this->log_debug( __METHOD__ . "(): Sending verify  request to Instamojo for validation. URL: $url" );
-
-			$request  = new WP_Http();
-			$response = $request->get( $url , array(
-				'sslverify' => false, 'ssl' => true,
-				'headers'=>$headers, 'timeout' => 20) );
-
-			// try to parse josn
-			$body=json_decode(rgar( $response, 'body' ));
-
-			$this->log_debug( __METHOD__ . "(): Return form Instamojo for validation. reuest:",print_r($body,true) );
-
-			if ( ! is_wp_error( $response ) && $body->success ) {
-				$this->log_debug( __METHOD__ . "(): Payment  verify Instamoj: { $url }" );
-				//manula updat ewitout call backs poper return
-				$entry['payment_status']=$body->payment_request->status;
-				GFAPI::update_entry($entry);
-				// TODO: this function needs to updated properly with response
-				return $this->update_data_for_callback($entry,$feed,$body->payment_request->status;);
-			} else {
-			   $this->log_debug( __METHOD__ . "(): Unableto find the verify   Instamoj Payment : ".print_r(rgar( $response, 'body' ),true) );
-
-			}
-
-		*/
-		return $this->update_data_for_callback($entry, $feed, $paymentStatus);
-	}
-
-	public function supported_notification_events($form) {
-		if (!$this->has_feed($form['id'])) {
-			return false;
-		}
-
-		return array(
-			'complete_payment' => esc_html__('Payment Completed', 'gravityformsinstamojo'),
-			'fail_payment' => esc_html__('Payment Failed', 'gravityformsinstamojo'),
-		);
-	}
-
-	// TODO: this function needs to updated properly with response
-	private function update_data_for_callback($entry, $feed, $status) {
-
-		$action = array();
-
-		$action['id'] = $entry['transaction_id'];
-		$action['transaction_id'] = $entry['transaction_id'];
-		$action['amount'] = $entry['payment_amount'];
-		$action['entry_id'] = $entry['id'];
-		$action['payment_date'] = gmdate('y-m-d H:i:s');
-		$action['payment_method'] = 'instamojo';
-		$action['payment_status'] = $status;
-
-		//updte the form
-		$entry['payment_status'] = $status;
-		// GFAPI::update_entry($entry);
-
-		if ($action['payment_status'] == 'Credit' || $action['payment_status'] == 'Completed') {
-			// $action['payment_status'] = 'Completed';
-			$action['type'] = 'complete_payment';
-		} else {
-			$action['type'] = 'fail_payment';
-			//don't pocess the payment
-			return [];
-		}
-		return $action;
-
-	}
 }
