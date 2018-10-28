@@ -1,5 +1,7 @@
 <?php
 
+// add_action( 'wp', array( 'GFInstamojo', 'maybe_thankyou_page' ), 5 );
+
 GFForms::include_payment_addon_framework();
 
 class GFInstamojo extends GFPaymentAddOn {
@@ -26,6 +28,12 @@ class GFInstamojo extends GFPaymentAddOn {
 	const PAYMENT_MODE_TEST = 'test';
 	const PAYMENT_MODE_PROD = 'production';
 	const PAYMENT_METHOD = 'Instamojo';
+
+	const PAYMENT_REQUEST_STATUS_NA = 'PAYMENT_REQUEST_STATUS_NOT_AVAILABLE';
+	const PAYMENT_STATUS_NA = 'Not Available';
+	const PAYMENT_REQUEST_STATUS_COMPLETED = 'Completed';
+	const PAYMENT_STATUS_SUCESS = 'Success';
+	const PAYMENT_STATUS_FAILED = 'Failed';
 
 	public static function get_instance() {
 		if (self::$_instance == null) {
@@ -199,18 +207,14 @@ class GFInstamojo extends GFPaymentAddOn {
 		if (!is_wp_error($payment_request_response)) {
 			$url = rgar($payment_request_response, 'redirect_url');
 			$request_id = rgar($payment_request_response, 'request_id');
-			$action['note'] = sprintf(esc_html__('Payment is pending. Amount: %s. Request Id : %s.  Request URL : %s.', $this->_slug), $amount_formatted, $request_id, $url);
-			// record a pending payment
-			$this->add_pending_payment($entry, $action);
-			$this->log_debug(__METHOD__ . '(): Added Pending payment record');
-
+			$action_note = sprintf(esc_html__('Payment is requested. Amount: %s. Request Id : %s.  Request URL : %s.', $this->_slug), $amount_formatted, $request_id, $url);
+			$this->log_debug(__METHOD__ . '(): Added Payment is requested note');
+			$this->add_note($entry['id'], $action_note);
 		} else {
 
 			// fail the payment as not able to redirect to the user
-			$action['note'] = sprintf(esc_html__('Payment has failed. Amount: %s Reason: %s', $this->_slug), $amount_formatted, $payment_request_response->get_error_message());
-			$action['payment_status'] = 'Failed';
-			// record a pending payment
-			$this->fail_payment($entry, $action);
+			$action_note = sprintf(esc_html__('Payment request failed. Amount: %s Reason: %s', $this->_slug), $amount_formatted, $payment_request_response->get_error_message());
+			$this->add_note($entry['id'], $action_note, 'error');
 			return false;
 		}
 
@@ -280,18 +284,15 @@ class GFInstamojo extends GFPaymentAddOn {
 			return;
 		}
 
-		$this->log_debug(__METHOD__ . '(): Processing retrun callback option');
+		$this->log_debug(__METHOD__ . '(): Processing retrun callback retrun option');
 
 		$gf_instamojo_return = $this->unpack_data(rgget('gf_instamojo_return'));
 		$payment_id = rgget('payment_id');
 		$payment_request_id = rgget('payment_request_id');
 
-		// invalid parameters passed
-		if (empty($gf_instamojo_return) || empty($payment_id) || empty($payment_request_id)) {
-			return;
-		}
-		// get the form entry and payment details
-		$entry = GFAPI::get_entry($gf_instamojo_return['lead_id']);
+		$form = GFAPI::get_form( $gf_instamojo_return['form_id'] );
+		$entry = GFAPI::get_entry( $gf_instamojo_return['lead_id']);
+
 		$feed = $this->get_payment_feed($entry);
 		$meta = rgar($feed, 'meta');
 		$payment_request_details = $this->verify_instamojo_payment(
@@ -301,28 +302,55 @@ class GFInstamojo extends GFPaymentAddOn {
 			$meta['instamojoAuthToken']
 		);
 
+		$payment_request_status = self::PAYMENT_REQUEST_STATUS_NA;
+		$payment_status = self::PAYMENT_STATUS_NA;
+
+		$payment_details = [];
 		if (!is_wp_error($payment_request_details) || !empty($payment_request_details)) {
+
+			if ($payment_request_details->status === 'Completed') {
+				$payment_request_status = self::PAYMENT_REQUEST_STATUS_COMPLETED;
+			}
+
 			// fin the payment details in the request
-			$payment_details = '';
 			foreach ($payment_request_details->payments as $key => $value) {
 				if ($value->payment_id == $payment_id) {
 					$payment_details = $value;
 				}
 			}
 
-			// switch only if the payment is completed
-			switch ($payment_request_details->status) {
-			case 'Completed':
-				$action = [
-					'type' => $payment_request_details->status,
-				];
-				$this->log_debug(__METHOD__ . '(): Debug ' . print_r($payment_details, true));
-				break;
-			default:
-				# code...
-				break;
+			// get action callback array
+			if (!empty($payment_details)) {
+				if (empty($payment_details->failure)) {
+					$payment_status = self::PAYMENT_STATUS_SUCESS;
+				} else {
+					$payment_status = self::PAYMENT_STATUS_FAILED;
+				}
 			}
 		}
+
+		if ( ! class_exists( 'GFFormDisplay' ) ) {
+			require_once( GFCommon::get_base_path() . '/form_display.php' );
+		}
+
+		// FIXME: remove hardcoded values from the fixed keys Optimize this 
+		$entry[5] = $payment_request_id;
+		$entry[6] = $payment_status;
+
+		$confirmation = GFFormDisplay::handle_confirmation( $form, $entry, false );
+
+		if ( is_array( $confirmation ) && isset( $confirmation['redirect'] ) ) {
+			header( "Location: {$confirmation['redirect']}" );
+			exit;
+		}
+		// FIXME : debug line for checking the injected values 
+		// $this->log_debug(__METHOD__ . '(): Debug '.print_r($entry,true));
+		GFFormDisplay::$submission[ $gf_instamojo_return['form_id']  ] = array(
+			'is_confirmation'      => true,
+			'confirmation_message' => $confirmation,
+			'form'                 => $form,
+			'lead'                 => $entry
+		);
 
 		return;
 	}
@@ -333,7 +361,6 @@ class GFInstamojo extends GFPaymentAddOn {
 
 		// Intercepting callback retruns.
 		add_action('parse_request', array($this, 'maybe_process_return_callback'));
-
 	}
 
 	protected function create_instamojo_paymentrequest($payload, $mode, $instamojo_api_key, $instamojo_auth_token) {
@@ -361,8 +388,6 @@ class GFInstamojo extends GFPaymentAddOn {
 
 		if (!is_wp_error($response) && $body->success) {
 			$sucess_results['request_id'] = $body->payment_request->id;
-			$sucess_results['payment_amount'] = $body->payment_request->amount;
-			$sucess_results['payment_date'] = $body->payment_request->created_at;
 			$sucess_results['redirect_url'] = $body->payment_request->longurl;
 			$this->log_debug(__METHOD__ . "(): Payment  URL Instamoj: " . $body->payment_request->longurl);
 		} else {
@@ -389,6 +414,7 @@ class GFInstamojo extends GFPaymentAddOn {
 
 		$url = add_query_arg(array(
 			'gf_instamojo_return' => base64_encode($ids_query),
+			'callback' => $this->_slug,
 		), $pageURL);
 
 		$query = 'gf_instamojo_return=' . base64_encode($ids_query) . '&callback=' . $this->_slug;
